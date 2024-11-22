@@ -29,8 +29,15 @@
 #include <array>
 #include <chrono>
 
+#include <random>
+std::random_device rd;
+std::mt19937 gen(rd());
+std::uniform_real_distribution<double> dist(0.0, 1.0);
+
 #include "./math/complex.hpp"
 
+const double EPSILON = 1e-3;
+const double MIN_RADIUS = 1e-3;
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
 const uint32_t WIDTH = 800;
@@ -204,6 +211,21 @@ private:
         {0.2f, 0.2f, 0.8f}, // Soft Blue
         {0.9f, 0.7f, 0.3f}, // Gold
         {0.6f, 0.3f, 0.1f}, // Brown
+        {1.0f, 0.0f, 0.0f}, // Red
+        {0.0f, 1.0f, 0.0f}, // Green
+        {0.0f, 0.0f, 1.0f}, // Blue
+        {1.0f, 1.0f, 0.0f}, // Yellow
+        {0.0f, 1.0f, 1.0f}, // Cyan
+        {1.0f, 0.0f, 1.0f}, // Magenta
+        {1.0f, 0.5f, 0.0f}, // Orange
+        {0.5f, 0.0f, 1.0f}, // Purple
+        {0.0f, 0.5f, 0.5f}, // Teal
+        {0.5f, 0.5f, 0.0f}, // Olive
+        {0.8f, 0.0f, 0.4f}, // Deep Pink
+        {0.2f, 0.8f, 0.2f}, // Lime Green
+        {0.2f, 0.2f, 0.8f}, // Soft Blue
+        {0.9f, 0.7f, 0.3f}, // Gold
+        {0.6f, 0.3f, 0.1f}, // Brown
     };
 
     uint32_t currentFrame = 0;
@@ -290,6 +312,37 @@ private:
         vkDeviceWaitIdle(device);
     }
 
+    glm::vec2 randomUnitVector() {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<float> dist(0.0f, glm::two_pi<float>());
+        float angle = dist(gen);
+        return glm::vec2(std::cos(angle), std::sin(angle));
+    }
+
+    std::vector<Circle> generate2RandomTanCircles(Circle c1) {
+        Circle circle2{};
+        glm::vec2 v = randomUnitVector();
+
+        double r2 = dist(gen) * (c1.radius / 2.0);
+        circle2.radius = r2;
+        circle2.curvature = 1.0 / r2;
+        glm::vec2 r2Pos = static_cast<float>(c1.radius - r2) * v;
+        circle2.center = complex((float)r2Pos.x, (float)r2Pos.y);
+
+        double r3 = c1.radius - r2;
+        v = (-1.0f)*v;
+
+        Circle circle3{};
+        circle3.radius = r3;
+        circle3.curvature = 1.0 / r3;
+
+        glm::vec2 r3Pos = static_cast<float>(c1.radius - r3) * v;
+        circle3.center = complex((float)r3Pos.x, (float)r3Pos.y);
+
+        return std::vector<Circle> {circle2, circle3};
+    }
+
     void initApollonianGasket() {
         Circle circle1{};
         circle1.radius = 1;
@@ -297,29 +350,22 @@ private:
         circle1.curvature = -1;
 
         Circle circle2{};
-        circle2.radius = 3.0/5.0;
-        circle2.center = complex(-0.4, 0.0);
-        circle2.curvature = 5.0/3.0;
+        circle2.radius = 0.5;
+        circle2.curvature = 1.0/0.5;
+        circle2.center = complex(0.5, 0.0);
 
         Circle circle3{};
-        circle3.radius = 3.0/8.0;
-        circle3.center = complex(0.5, 3.0/8.0);
-        circle3.curvature = 8.0/3.0;
+        circle3.radius = 0.5;
+        circle3.curvature = 1.0/0.5;
+        circle3.center = complex(-0.5, 0.0);
 
-        Circle circle4{};
-        circle4.radius = 3.0/8.0;
-        circle4.center = complex(0.5, -3.0/8.0);
-        circle4.curvature = 8.0/3.0;
+        std::vector<Circle> randomCircles = generate2RandomTanCircles(circle1);
 
         allCircles.push_back(circle1);
         allCircles.push_back(circle2);
         allCircles.push_back(circle3);
-        allCircles.push_back(circle4);
 
         circlesQueue.push_back(std::vector<Circle> {circle1, circle2, circle3});
-        circlesQueue.push_back(std::vector<Circle> {circle1, circle2, circle4});
-        circlesQueue.push_back(std::vector<Circle> {circle2, circle3, circle4});
-        circlesQueue.push_back(std::vector<Circle> {circle1, circle3, circle4});
     }
 
 
@@ -337,13 +383,12 @@ private:
 
     bool checkPositionValid(Circle c1, Circle c2) { // no overlapping, no inside other, must kiss
         double d = computeDistance(c1, c2);
-        double EPSILON = 0.001;
 
-        if (fabs(d - (c1.radius + c2.radius)) < EPSILON) {
+        if (d - (c1.radius + c2.radius) < EPSILON) {
             return true;
         }
 
-        if (fabs(d - fabs(c1.radius - c2.radius)) < EPSILON) {
+        if (d - fabs(c1.radius - c2.radius) < EPSILON) {
             return true;
         }
 
@@ -357,7 +402,7 @@ private:
 
         for (int i = 0; i < allCircles.size(); i++) {
             double distance = computeDistance(newCircle, allCircles[i]);
-            if (distance < 0.001) {
+            if (distance < MIN_RADIUS) {
                 return false;
             }
         }
@@ -369,7 +414,7 @@ private:
 
     void generateApollonianGasket(int levels) {
         int numOfCirc = 3;
-        std::vector<int> circlesInLevel{4};
+        std::vector<int> circlesInLevel{3};
 
         for (int i = 0; i < levels; i++) {
             std::vector<std::vector<Circle>> nextQueue;
@@ -381,7 +426,7 @@ private:
                 Circle c3 = circlesQueue[j][2];
 
                 std::vector<double> nextCurvature = computeNextCurvature(c1, c2, c3);
-                float radius4 = abs(1.0 / nextCurvature[0]);
+                float radius4 = abs(1.0 / fabs(nextCurvature[0]));
 
                 std::vector<Circle> newCircles = computeNextCircles(c1, c2, c3, nextCurvature);
                 numOfCirc += newCircles.size();
@@ -408,8 +453,13 @@ private:
         std::cout << "Number of circles in vec: " << allCircles.size() << '\n';
 
         int currentLevel = 0;
+
+        for (int i = 0; i < circlesInLevel.size(); i++) {
+             std::cout << "Levels: " << circlesInLevel[i] << '\n';
+        }
+
         for (int i = 0; i < allCircles.size(); i++) {
-            generateCircleVertices(allCircles[i], fmax(30, 50*pow(allCircles[i].radius, 0.3)), circleColors[currentLevel]);
+            generateCircleVertices(allCircles[i], fmax(30, 100*pow(allCircles[i].radius, 0.3)), circleColors[currentLevel]);
             circlesInLevel[currentLevel]--;
             if (circlesInLevel[currentLevel] == 0) currentLevel++;
         }
@@ -473,7 +523,7 @@ private:
         float k3 = circle3.curvature;
 
         float sum = k1 + k2 + k3;
-        float squareRoot = 2*sqrt(k1*k2 + k2*k3 + k1*k3);
+        float squareRoot = 2*sqrt(fabs(k1*k2 + k2*k3 + k1*k3));
 
         return std::vector<double>{sum + squareRoot, sum - squareRoot};
     }
