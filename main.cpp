@@ -240,9 +240,9 @@ private:
         createGraphicsPipeline();
         createFrameBuffers();
         createCommandPool();
-        createTextureImage();
-        createTextureImageView();
-        createTextureSampler();
+        // createTextureImage();
+        // createTextureImageView();
+        // createTextureSampler();
 
         initApollonianGasket();
         generateApollonianGasket(10);
@@ -288,6 +288,39 @@ private:
         circlesQueue.push_back(std::vector<Circle> {circle1, circle2, circle3});
     }
 
+    bool checkPositionValid(Circle circ1, Circle circ2) { // no overlapping, no inside other, must kiss
+        double d = sqrt(
+            (circ1.center.getReal() - circ2.center.getReal()) *
+            (circ1.center.getReal() - circ2.center.getReal())
+
+            +
+
+            (circ1.center.getImaginary() - circ2.center.getImaginary()) *
+            (circ1.center.getImaginary() - circ2.center.getImaginary())
+        );
+
+        if (fabs(d - (circ1.radius + circ2.radius)) < 0.001) {
+            std::cout << "Circles are externally tangent\n";
+            return true;
+        }
+
+        if (fabs(d - fabs(circ1.radius - circ2.radius)) < 0.001) {
+            std::cout << "Circles are internally tangent\n";
+            return true;
+        }
+
+        return false;
+    }
+
+    bool isValidCircle(Circle c1, Circle c2, Circle c3, Circle newCircle, uint32_t maxRadius) {
+        if (newCircle.radius > maxRadius)  return false;
+
+        return checkPositionValid(c1, newCircle);
+        //&&
+        //       checkPositionValid(c2, newCircle) &&
+        //       checkPositionValid(c3, newCircle);
+    }
+
     void generateApollonianGasket(int levels) {
         for (int i = 0; i < 5; i++) {
             std::vector<std::vector<Circle>> nextQueue;
@@ -302,7 +335,7 @@ private:
                 std::vector<Circle> newCircles = computeNextCircles(c1, c2, c3, nextCurvature);
 
                 for (int z = 0; z < newCircles.size(); z++) {
-                    if (newCircles[z].radius > 1) continue;
+                    if (!isValidCircle(c1, c2, c3, newCircles[z], 1.0)) continue;
                     allCircles.push_back(newCircles[z]);
 
                     std::vector<Circle> t1 {c1, c2, newCircles[z]};
@@ -330,7 +363,7 @@ private:
 
 
         for (int i = 0; i < allCircles.size(); i++) {
-            generateCircleVertices(allCircles[i], 20);
+            generateCircleVertices(allCircles[i], 50);
         }
     }
 
