@@ -240,9 +240,6 @@ private:
         createGraphicsPipeline();
         createFrameBuffers();
         createCommandPool();
-        // createTextureImage();
-        // createTextureImageView();
-        // createTextureSampler();
 
         initApollonianGasket();
         generateApollonianGasket(10);
@@ -315,10 +312,9 @@ private:
     bool isValidCircle(Circle c1, Circle c2, Circle c3, Circle newCircle, uint32_t maxRadius) {
         if (newCircle.radius > maxRadius)  return false;
 
-        return checkPositionValid(c1, newCircle);
-        //&&
-        //       checkPositionValid(c2, newCircle) &&
-        //       checkPositionValid(c3, newCircle);
+        return checkPositionValid(c1, newCircle) &&
+               checkPositionValid(c2, newCircle) &&
+               checkPositionValid(c3, newCircle);
     }
 
     void generateApollonianGasket(int levels) {
