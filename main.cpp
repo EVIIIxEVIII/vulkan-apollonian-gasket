@@ -27,10 +27,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <array>
+#include <chrono>
 
 #include "./math/complex.hpp"
-
-#include <chrono>
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
@@ -132,8 +131,9 @@ struct Circle {
 
 class ApollonianGasketApplication {
 public:
-    void run() {
+    void run(int levels) {
         initWindow();
+        initData(levels);
         initVulkan();
         mainLoop();
         cleanup();
@@ -188,10 +188,28 @@ private:
     MeshData globalMeshData{};
     std::vector<Circle> allCircles;
     std::vector<std::vector<Circle>> circlesQueue;
+    std::vector<glm::vec3> circleColors{
+        {1.0f, 0.0f, 0.0f}, // Red
+        {0.0f, 1.0f, 0.0f}, // Green
+        {0.0f, 0.0f, 1.0f}, // Blue
+        {1.0f, 1.0f, 0.0f}, // Yellow
+        {0.0f, 1.0f, 1.0f}, // Cyan
+        {1.0f, 0.0f, 1.0f}, // Magenta
+        {1.0f, 0.5f, 0.0f}, // Orange
+        {0.5f, 0.0f, 1.0f}, // Purple
+        {0.0f, 0.5f, 0.5f}, // Teal
+        {0.5f, 0.5f, 0.0f}, // Olive
+        {0.8f, 0.0f, 0.4f}, // Deep Pink
+        {0.2f, 0.8f, 0.2f}, // Lime Green
+        {0.2f, 0.2f, 0.8f}, // Soft Blue
+        {0.9f, 0.7f, 0.3f}, // Gold
+        {0.6f, 0.3f, 0.1f}, // Brown
+    };
 
     uint32_t currentFrame = 0;
-
     bool framebufferResized = false;
+    float zoom = 1;
+    glm::vec2 position{0.0, 0.0};
 
     void initWindow() {
         glfwInit();
@@ -201,12 +219,44 @@ private:
 
         window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
         glfwSetWindowUserPointer(window, this);
+        glfwSetKeyCallback(window, wasdControlsCallback);
+        glfwSetScrollCallback(window, scrollCallback);
         glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+    }
+
+    static void wasdControlsCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+        auto app = reinterpret_cast<ApollonianGasketApplication*>(glfwGetWindowUserPointer(window));
+        if (!app) throw std::runtime_error("Failed to get the application Class in the scroll callback!");
+
+        if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+            float zoomInverse = 1 / app->zoom;
+            switch (key) {
+                case GLFW_KEY_W: app->position.y -= 0.1f * zoomInverse; break;
+                case GLFW_KEY_S: app->position.y += 0.1f * zoomInverse; break;
+                case GLFW_KEY_D: app->position.x -= 0.1f * zoomInverse; break;
+                case GLFW_KEY_A: app->position.x += 0.1f * zoomInverse; break;
+            }
+        }
+    }
+
+    static void scrollCallback(GLFWwindow* window, double xoffset, double yoffset) {
+        auto app = reinterpret_cast<ApollonianGasketApplication*>(glfwGetWindowUserPointer(window));
+
+        if (app) {
+            app->zoom *= (1 + 0.1 * yoffset);
+        } else {
+            throw std::runtime_error("Failed to get the application Class in the scroll callback!");
+        }
     }
 
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
         auto app = reinterpret_cast<ApollonianGasketApplication*>(glfwGetWindowUserPointer(window));
         app->framebufferResized = true;
+    }
+
+    void initData(int levels) {
+        initApollonianGasket();
+        generateApollonianGasket(levels);
     }
 
     void initVulkan() {
@@ -222,10 +272,6 @@ private:
         createGraphicsPipeline();
         createFrameBuffers();
         createCommandPool();
-
-        initApollonianGasket();
-        generateApollonianGasket(10);
-
         createVertexBuffer();
         createIndexBuffer();
         createUniformBuffers();
@@ -251,38 +297,53 @@ private:
         circle1.curvature = -1;
 
         Circle circle2{};
-        circle2.radius = 1.0/2.0;
-        circle2.center = complex(0.5, 0.0);
-        circle2.curvature = 2.0;
+        circle2.radius = 3.0/5.0;
+        circle2.center = complex(-0.4, 0.0);
+        circle2.curvature = 5.0/3.0;
 
         Circle circle3{};
-        circle3.radius = 1.0/2.0;
-        circle3.center = complex(-0.5, 0.0);
-        circle3.curvature = 2.0;
+        circle3.radius = 3.0/8.0;
+        circle3.center = complex(0.5, 3.0/8.0);
+        circle3.curvature = 8.0/3.0;
+
+        Circle circle4{};
+        circle4.radius = 3.0/8.0;
+        circle4.center = complex(0.5, -3.0/8.0);
+        circle4.curvature = 8.0/3.0;
 
         allCircles.push_back(circle1);
         allCircles.push_back(circle2);
         allCircles.push_back(circle3);
+        allCircles.push_back(circle4);
 
         circlesQueue.push_back(std::vector<Circle> {circle1, circle2, circle3});
+        circlesQueue.push_back(std::vector<Circle> {circle1, circle2, circle4});
+        circlesQueue.push_back(std::vector<Circle> {circle2, circle3, circle4});
+        circlesQueue.push_back(std::vector<Circle> {circle1, circle3, circle4});
     }
 
-    bool checkPositionValid(Circle circ1, Circle circ2) { // no overlapping, no inside other, must kiss
-        double d = sqrt(
-            (circ1.center.getReal() - circ2.center.getReal()) *
-            (circ1.center.getReal() - circ2.center.getReal())
+
+    double computeDistance(Circle c1, Circle c2) {
+        return sqrt(
+            (c1.center.getReal() - c2.center.getReal()) *
+            (c1.center.getReal() - c2.center.getReal())
 
             +
 
-            (circ1.center.getImaginary() - circ2.center.getImaginary()) *
-            (circ1.center.getImaginary() - circ2.center.getImaginary())
+            (c1.center.getImaginary() - c2.center.getImaginary()) *
+            (c1.center.getImaginary() - c2.center.getImaginary())
         );
+    }
 
-        if (fabs(d - (circ1.radius + circ2.radius)) < 0.001) {
+    bool checkPositionValid(Circle c1, Circle c2) { // no overlapping, no inside other, must kiss
+        double d = computeDistance(c1, c2);
+        double EPSILON = 0.001;
+
+        if (fabs(d - (c1.radius + c2.radius)) < EPSILON) {
             return true;
         }
 
-        if (fabs(d - fabs(circ1.radius - circ2.radius)) < 0.001) {
+        if (fabs(d - fabs(c1.radius - c2.radius)) < EPSILON) {
             return true;
         }
 
@@ -290,16 +351,29 @@ private:
     }
 
     bool isValidCircle(Circle c1, Circle c2, Circle c3, Circle newCircle, uint32_t maxRadius) {
+        // an interesting thing is that 2 circles out of 4 will always have a wrong position
+        // because the algo is creating 2 inside circles and 2 outside circles
         if (newCircle.radius > maxRadius)  return false;
 
-        return checkPositionValid(c1, newCircle) &&
-               checkPositionValid(c2, newCircle) &&
-               checkPositionValid(c3, newCircle);
+        for (int i = 0; i < allCircles.size(); i++) {
+            double distance = computeDistance(newCircle, allCircles[i]);
+            if (distance < 0.001) {
+                return false;
+            }
+        }
+
+        return  checkPositionValid(c1, newCircle) &&
+                checkPositionValid(c2, newCircle) &&
+                checkPositionValid(c3, newCircle);
     }
 
     void generateApollonianGasket(int levels) {
-        for (int i = 0; i < 5; i++) {
+        int numOfCirc = 3;
+        std::vector<int> circlesInLevel{4};
+
+        for (int i = 0; i < levels; i++) {
             std::vector<std::vector<Circle>> nextQueue;
+            circlesInLevel.push_back(0);
 
             for (int j = 0; j < circlesQueue.size(); j++) {
                 Circle c1 = circlesQueue[j][0];
@@ -308,10 +382,13 @@ private:
 
                 std::vector<double> nextCurvature = computeNextCurvature(c1, c2, c3);
                 float radius4 = abs(1.0 / nextCurvature[0]);
+
                 std::vector<Circle> newCircles = computeNextCircles(c1, c2, c3, nextCurvature);
+                numOfCirc += newCircles.size();
 
                 for (int z = 0; z < newCircles.size(); z++) {
                     if (!isValidCircle(c1, c2, c3, newCircles[z], 1.0)) continue;
+                    circlesInLevel[i]++;
                     allCircles.push_back(newCircles[z]);
 
                     std::vector<Circle> t1 {c1, c2, newCircles[z]};
@@ -327,20 +404,18 @@ private:
             circlesQueue = nextQueue;
         }
 
-        // std::vector<double> k4 = computeNextCurvature(circle1, circle2, circle3);
+        std::cout << "Number of circles generated: " << numOfCirc << '\n';
+        std::cout << "Number of circles in vec: " << allCircles.size() << '\n';
 
-        // float radius4 = abs(1.0/k4[0]);
-        // std::vector<Circle> nextCircles = computeNextCircles(circle1, circle2, circle3, k4);
-
-        // for (int i = 0; i < nextCircles.size(); i++) {
-        //     generateCircleVertices(nextCircles[i], 50);
-        //     generateCircleVertices(nextCircles[i], 50);
-        // }
-
-
+        int currentLevel = 0;
         for (int i = 0; i < allCircles.size(); i++) {
-            generateCircleVertices(allCircles[i], 50);
+            generateCircleVertices(allCircles[i], fmax(30, 50*pow(allCircles[i].radius, 0.3)), circleColors[currentLevel]);
+            circlesInLevel[currentLevel]--;
+            if (circlesInLevel[currentLevel] == 0) currentLevel++;
         }
+
+        std::cout << "Number of vertices generated: " << globalMeshData.vertices.size() << '\n';
+        std::cout << "Number of indices generated: " << globalMeshData.indices.size() << '\n';
     }
 
     std::vector<Circle> computeNextCircles(Circle c1, Circle c2, Circle c3, std::vector<double> k4) {
@@ -403,7 +478,7 @@ private:
         return std::vector<double>{sum + squareRoot, sum - squareRoot};
     }
 
-    void generateCircleVertices(Circle circle, int vertices) {
+    void generateCircleVertices(Circle circle, int vertices, glm::vec3 color) {
         std::vector<Vertex> circleVertices;
         float angleBetweenPoints = 2 * M_PI / vertices;
         int firstVertexIndex = globalVertexIndex;
@@ -413,7 +488,7 @@ private:
             float x = circle.center.getReal() + circle.radius * cos(theta);
             float y = circle.center.getImaginary() + circle.radius * sin(theta);
 
-            globalMeshData.vertices.push_back({{x, y}, {1.0f, 1.0f, 1.0f}});
+            globalMeshData.vertices.push_back({{x, y}, color});
             globalMeshData.indices.push_back(globalVertexIndex);
 
             globalVertexIndex++;
@@ -1438,9 +1513,15 @@ private:
         float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
         UniformBufferObject ubo{};
-        ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-
+        // ubo.model = glm::rotate(glm::mat4(1.0f), glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
         // ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+
+        glm::mat4 model = glm::mat4(1.0f);
+        model = glm::scale(model, glm::vec3(zoom));
+        model = glm::translate(model, glm::vec3(position.x, position.y, 0.0f));
+        model = glm::rotate(model, glm::radians(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+        ubo.model = model;
+
         ubo.view = glm::lookAt(
             glm::vec3(0.0f, 0.0f, 2.414f),
             glm::vec3(0.0f, 0.0f, 0.0f),
@@ -1663,9 +1744,12 @@ private:
 
 int main() {
     ApollonianGasketApplication app;
+    int levels = 0;
+    std::cout << "\n\n Please input the number of levels: ";
+    std::cin >> levels;
 
     try {
-        app.run();
+        app.run(levels);
     } catch (const std::exception& e) {
         std::cerr << e.what() << std::endl;
         return EXIT_FAILURE;
