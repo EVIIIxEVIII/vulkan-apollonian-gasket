@@ -433,7 +433,7 @@ private:
 
                 for (int z = 0; z < newCircles.size(); z++) {
                     if (!isValidCircle(c1, c2, c3, newCircles[z], 1.0)) continue;
-                    circlesInLevel[i]++;
+                    circlesInLevel[i+1]++;
                     allCircles.push_back(newCircles[z]);
 
                     std::vector<Circle> t1 {c1, c2, newCircles[z]};
