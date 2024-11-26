@@ -1,6 +1,6 @@
+#include "math/gasket.hpp"
 #include <glm/ext/vector_float2.hpp>
 #define GLFW_INCLUDE_VULKAN
-#define STB_IMAGE_IMPLEMENTATION
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 
@@ -8,7 +8,6 @@
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/trigonometric.hpp>
-#include <stb_image.h>
 
 #include <vulkan/vulkan_core.h>
 #include <GLFW/glfw3.h>
@@ -36,8 +35,9 @@ std::uniform_real_distribution<double> dist(0.0, 1.0);
 
 #include "./math/complex.hpp"
 
-const double EPSILON = 1e-3;
+const double EPSILON = 1e-4;
 const double MIN_RADIUS = 1e-3;
+
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
 const uint32_t WIDTH = 800;
@@ -129,15 +129,10 @@ struct MeshData {
     std::vector<uint32_t> indices;
 };
 
-struct Circle {
-    Circle(): center(0.0, 0.0), radius(0.0), curvature(0.0) {}
-    complex center;
-    double curvature;
-    double radius;
-};
-
 class ApollonianGasketApplication {
 public:
+    ApollonianGasketApplication(Gasket gasketGenerator): gasketGenerator(gasketGenerator) {};
+
     void run(int levels) {
         initWindow();
         initData(levels);
@@ -147,6 +142,8 @@ public:
     }
 
 private:
+    Gasket gasketGenerator;
+
     GLFWwindow* window;
 
     VkInstance instance;
@@ -193,40 +190,6 @@ private:
 
     int globalVertexIndex = 0;
     MeshData globalMeshData{};
-    std::vector<Circle> allCircles;
-    std::vector<std::vector<Circle>> circlesQueue;
-    std::vector<glm::vec3> circleColors{
-        {1.0f, 0.0f, 0.0f}, // Red
-        {0.0f, 1.0f, 0.0f}, // Green
-        {0.0f, 0.0f, 1.0f}, // Blue
-        {1.0f, 1.0f, 0.0f}, // Yellow
-        {0.0f, 1.0f, 1.0f}, // Cyan
-        {1.0f, 0.0f, 1.0f}, // Magenta
-        {1.0f, 0.5f, 0.0f}, // Orange
-        {0.5f, 0.0f, 1.0f}, // Purple
-        {0.0f, 0.5f, 0.5f}, // Teal
-        {0.5f, 0.5f, 0.0f}, // Olive
-        {0.8f, 0.0f, 0.4f}, // Deep Pink
-        {0.2f, 0.8f, 0.2f}, // Lime Green
-        {0.2f, 0.2f, 0.8f}, // Soft Blue
-        {0.9f, 0.7f, 0.3f}, // Gold
-        {0.6f, 0.3f, 0.1f}, // Brown
-        {1.0f, 0.0f, 0.0f}, // Red
-        {0.0f, 1.0f, 0.0f}, // Green
-        {0.0f, 0.0f, 1.0f}, // Blue
-        {1.0f, 1.0f, 0.0f}, // Yellow
-        {0.0f, 1.0f, 1.0f}, // Cyan
-        {1.0f, 0.0f, 1.0f}, // Magenta
-        {1.0f, 0.5f, 0.0f}, // Orange
-        {0.5f, 0.0f, 1.0f}, // Purple
-        {0.0f, 0.5f, 0.5f}, // Teal
-        {0.5f, 0.5f, 0.0f}, // Olive
-        {0.8f, 0.0f, 0.4f}, // Deep Pink
-        {0.2f, 0.8f, 0.2f}, // Lime Green
-        {0.2f, 0.2f, 0.8f}, // Soft Blue
-        {0.9f, 0.7f, 0.3f}, // Gold
-        {0.6f, 0.3f, 0.1f}, // Brown
-    };
 
     uint32_t currentFrame = 0;
     bool framebufferResized = false;
@@ -277,7 +240,6 @@ private:
     }
 
     void initData(int levels) {
-        initApollonianGasket();
         generateApollonianGasket(levels);
     }
 
@@ -304,9 +266,25 @@ private:
     }
 
     void mainLoop() {
+        auto lastTime = std::chrono::high_resolution_clock::now();
+        int frameCount = 0;
+
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
             drawFrame();
+
+            frameCount++;
+             auto currentTime = std::chrono::high_resolution_clock::now();
+
+            std::chrono::duration<float> elapsed = currentTime - lastTime;
+
+            if (elapsed.count() >= 1.0f) {
+                float fps = frameCount / elapsed.count();
+                std::cout << "FPS: " << fps << std::endl;
+
+                lastTime = currentTime;
+                frameCount = 0;
+            }
         }
 
         vkDeviceWaitIdle(device);
@@ -343,33 +321,7 @@ private:
         return std::vector<Circle> {circle2, circle3};
     }
 
-    void initApollonianGasket() {
-        Circle circle1{};
-        circle1.radius = 1;
-        circle1.center = complex(0.0, 0.0);
-        circle1.curvature = -1;
-
-        Circle circle2{};
-        circle2.radius = 0.5;
-        circle2.curvature = 1.0/0.5;
-        circle2.center = complex(0.5, 0.0);
-
-        Circle circle3{};
-        circle3.radius = 0.5;
-        circle3.curvature = 1.0/0.5;
-        circle3.center = complex(-0.5, 0.0);
-
-        std::vector<Circle> randomCircles = generate2RandomTanCircles(circle1);
-
-        allCircles.push_back(circle1);
-        allCircles.push_back(circle2);
-        allCircles.push_back(circle3);
-
-        circlesQueue.push_back(std::vector<Circle> {circle1, circle2, circle3});
-    }
-
-
-    double computeDistance(Circle c1, Circle c2) {
+    double computeDistance(Circle c1, Circle c2) { // V
         return sqrt(
             (c1.center.getReal() - c2.center.getReal()) *
             (c1.center.getReal() - c2.center.getReal())
@@ -381,151 +333,26 @@ private:
         );
     }
 
-    bool checkPositionValid(Circle c1, Circle c2) { // no overlapping, no inside other, must kiss
-        double d = computeDistance(c1, c2);
-
-        if (d - (c1.radius + c2.radius) < EPSILON) {
-            return true;
-        }
-
-        if (d - fabs(c1.radius - c2.radius) < EPSILON) {
-            return true;
-        }
-
-        return false;
-    }
-
-    bool isValidCircle(Circle c1, Circle c2, Circle c3, Circle newCircle, uint32_t maxRadius) {
-        // an interesting thing is that 2 circles out of 4 will always have a wrong position
-        // because the algo is creating 2 inside circles and 2 outside circles
-        if (newCircle.radius > maxRadius)  return false;
-
-        for (int i = 0; i < allCircles.size(); i++) {
-            double distance = computeDistance(newCircle, allCircles[i]);
-            if (distance < MIN_RADIUS) {
-                return false;
-            }
-        }
-
-        return  checkPositionValid(c1, newCircle) &&
-                checkPositionValid(c2, newCircle) &&
-                checkPositionValid(c3, newCircle);
-    }
-
     void generateApollonianGasket(int levels) {
-        int numOfCirc = 3;
-        std::vector<int> circlesInLevel{3};
-
-        for (int i = 0; i < levels; i++) {
-            std::vector<std::vector<Circle>> nextQueue;
-            circlesInLevel.push_back(0);
-
-            for (int j = 0; j < circlesQueue.size(); j++) {
-                Circle c1 = circlesQueue[j][0];
-                Circle c2 = circlesQueue[j][1];
-                Circle c3 = circlesQueue[j][2];
-
-                std::vector<double> nextCurvature = computeNextCurvature(c1, c2, c3);
-                float radius4 = abs(1.0 / fabs(nextCurvature[0]));
-
-                std::vector<Circle> newCircles = computeNextCircles(c1, c2, c3, nextCurvature);
-                numOfCirc += newCircles.size();
-
-                for (int z = 0; z < newCircles.size(); z++) {
-                    if (!isValidCircle(c1, c2, c3, newCircles[z], 1.0)) continue;
-                    circlesInLevel[i+1]++;
-                    allCircles.push_back(newCircles[z]);
-
-                    std::vector<Circle> t1 {c1, c2, newCircles[z]};
-                    std::vector<Circle> t2 {c2, c3, newCircles[z]};
-                    std::vector<Circle> t3 {c1, c3, newCircles[z]};
-
-                    nextQueue.push_back(t1);
-                    nextQueue.push_back(t2);
-                    nextQueue.push_back(t3);
-                }
-            }
-
-            circlesQueue = nextQueue;
-        }
-
-        std::cout << "Number of circles generated: " << numOfCirc << '\n';
-        std::cout << "Number of circles in vec: " << allCircles.size() << '\n';
+        gasketGenerator.generateApollonianGasket(levels, false);
+        std::vector<int> circlesInLevel = gasketGenerator.getCirclesInLevel();
 
         int currentLevel = 0;
-
         for (int i = 0; i < circlesInLevel.size(); i++) {
              std::cout << "Levels: " << circlesInLevel[i] << '\n';
         }
 
-        for (int i = 0; i < allCircles.size(); i++) {
-            generateCircleVertices(allCircles[i], fmax(30, 100*pow(allCircles[i].radius, 0.3)), circleColors[currentLevel]);
+        const std::vector<Circle>& gasketAllCircles = gasketGenerator.getAllCircles();
+        const std::vector<glm::vec3>& gasketCircleColors = gasketGenerator.getCircleColors();
+
+        for (int i = 0; i < gasketAllCircles.size(); i++) {
+            generateCircleVertices(gasketAllCircles[i], fmax(30, 100*pow(gasketAllCircles[i].radius, 0.3)), gasketCircleColors[currentLevel]);
             circlesInLevel[currentLevel]--;
             if (circlesInLevel[currentLevel] == 0) currentLevel++;
         }
 
         std::cout << "Number of vertices generated: " << globalMeshData.vertices.size() << '\n';
         std::cout << "Number of indices generated: " << globalMeshData.indices.size() << '\n';
-    }
-
-    std::vector<Circle> computeNextCircles(Circle c1, Circle c2, Circle c3, std::vector<double> k4) {
-        double k1 = c1.curvature;
-        double k2 = c2.curvature;
-        double k3 = c3.curvature;
-
-        complex z1 = c1.center;
-        complex z2 = c2.center;
-        complex z3 = c3.center;
-
-        complex zk1 = z1 * k1;
-        complex zk2 = z2 * k2;
-        complex zk3 = z3 * k3;
-
-        complex sum = zk1 + zk2 + zk3;
-        complex root = (zk1*zk2 + zk2*zk3 + zk1*zk3).sqrt()*2.0;
-
-        complex center_1 = (sum + root)*(1.0 / k4[0]);
-        complex center_2 = (sum - root)*(1.0 / k4[0]);
-        complex center_3 = (sum + root)*(1.0 / k4[1]);
-        complex center_4 = (sum - root)*(1.0 / k4[1]);
-
-        Circle circle_1{};
-        circle_1.curvature = k4[0];
-        circle_1.center = center_1;
-        circle_1.radius = 1.0 / k4[0];
-
-        Circle circle_2{};
-        circle_2.curvature = k4[0];
-        circle_2.center = center_2;
-        circle_2.radius = 1.0 / k4[0];
-
-        Circle circle_3{};
-        circle_3.curvature = k4[1];
-        circle_3.center = center_3;
-        circle_3.radius = 1.0 / k4[1];
-
-        Circle circle_4{};
-        circle_4.curvature = k4[1];
-        circle_4.center = center_4;
-        circle_4.radius = 1.0 / k4[1];
-
-        return std::vector<Circle> {
-            circle_1,
-            circle_2,
-            circle_3,
-            circle_4
-        };
-    }
-
-    std::vector<double> computeNextCurvature(Circle circle1, Circle circle2, Circle circle3) {
-        float k1 = circle1.curvature;
-        float k2 = circle2.curvature;
-        float k3 = circle3.curvature;
-
-        float sum = k1 + k2 + k3;
-        float squareRoot = 2*sqrt(fabs(k1*k2 + k2*k3 + k1*k3));
-
-        return std::vector<double>{sum + squareRoot, sum - squareRoot};
     }
 
     void generateCircleVertices(Circle circle, int vertices, glm::vec3 color) {
@@ -1620,6 +1447,7 @@ private:
             }
         }
 
+        // VK_PRESENT_MODE_IMMEDIATE_KHR -> fps goes brrrrr
         return VK_PRESENT_MODE_FIFO_KHR;
     }
 
@@ -1793,7 +1621,9 @@ private:
 };
 
 int main() {
-    ApollonianGasketApplication app;
+    Gasket gasketGenerator = Gasket();
+    ApollonianGasketApplication app = ApollonianGasketApplication(gasketGenerator);
+
     int levels = 0;
     std::cout << "\n\n Please input the number of levels: ";
     std::cin >> levels;
